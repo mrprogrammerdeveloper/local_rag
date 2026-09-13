@@ -104,10 +104,12 @@ temp/
 # Qdrant local database / generated vector index
 data/vector_store/
 
+!data/vector_store/.gitkeep
+
 # Parsed references are generated during ingestion
 data/references/*.json
 
-data/evaluation/*
+data/evaluation/
 
 # Keep the references directory in Git if .gitkeep exists
 !data/references/.gitkeep
