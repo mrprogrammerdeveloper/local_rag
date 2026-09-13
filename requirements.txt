@@ -1,0 +1,22 @@
+# PDF Processing
+PyMuPDF==1.26.4
+
+# # Embedding Models
+# sentence-transformers==5.1.0
+
+# Vector Database
+qdrant-client==1.15.1
+
+# Ollama Local LLM Client
+ollama==0.5.3
+
+# Environment Variables
+python-dotenv==1.1.1
+
+# Numerical Computing
+numpy==2.3.3
+
+# Data Validation / Models
+pydantic==2.11.9
+
+

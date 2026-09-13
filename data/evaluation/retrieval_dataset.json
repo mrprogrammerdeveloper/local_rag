@@ -1,0 +1,32 @@
+[
+  {
+    "id": "q1",
+    "question": "What are metamaterials?",
+    "source": "GJETA-2025-0260 (1).pdf",
+    "relevant_pages": [2, 4, 7]
+  },
+  {
+    "id": "q2",
+    "question": "What are the aerospace applications of metamaterials?",
+    "source": "GJETA-2025-0260 (1).pdf",
+    "relevant_pages": [2, 8, 9, 10]
+  },
+  {
+    "id": "q3",
+    "question": "How does additive manufacturing contribute to metamaterial development?",
+    "source": "GJETA-2025-0260 (1).pdf",
+    "relevant_pages": [2, 10, 17]
+  },
+  {
+    "id": "q4",
+    "question": "What is inverse design in metamaterials?",
+    "source": "GJETA-2025-0260 (1).pdf",
+    "relevant_pages": [3, 11, 12]
+  },
+  {
+    "id": "q5",
+    "question": "What challenges limit practical metamaterial deployment?",
+    "source": "GJETA-2025-0260 (1).pdf",
+    "relevant_pages": [5, 16, 17, 20]
+  }
+]

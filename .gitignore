@@ -1,0 +1,163 @@
+# ============================================================
+# Environment variables / secrets
+# ============================================================
+
+.env
+.env.local
+.env.*.local
+
+# Keep example environment configuration
+!.env.example
+
+
+# ============================================================
+# Python virtual environments
+# ============================================================
+
+.venv/
+venv/
+env/
+ENV/
+
+dl_venv/
+
+
+# ============================================================
+# Python cache / compiled files
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+
+# ============================================================
+# Python build / packaging
+# ============================================================
+
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+
+# ============================================================
+# Test / coverage caches
+# ============================================================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+
+# ============================================================
+# Type checker / linter caches
+# ============================================================
+
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+
+# ============================================================
+# IDE / editor files
+# ============================================================
+
+.idea/
+.vscode/
+
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+
+# ============================================================
+# Operating system files
+# ============================================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ============================================================
+# Logs / temporary files
+# ============================================================
+
+*.log
+logs/
+tmp/
+temp/
+
+
+# ============================================================
+# Local RAG generated data
+# ============================================================
+
+# Qdrant local database / generated vector index
+data/vector_store/
+
+# Parsed references are generated during ingestion
+data/references/*.json
+
+# Keep the references directory in Git if .gitkeep exists
+!data/references/.gitkeep
+
+
+# ============================================================
+# PDF documents
+# ============================================================
+
+# Avoid accidentally committing copyrighted/private PDFs
+data/pdfs/*.pdf
+
+# Keep the directory itself
+!data/pdfs/.gitkeep
+
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+# DO NOT ignore the evaluation dataset.
+# It should be version-controlled for reproducibility.
+
+# Example:
+# data/evaluation/retrieval_dataset.json
+
+
+# ============================================================
+# Model / ML caches
+# ============================================================
+
+.cache/
+huggingface/
+.huggingface/
+
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+
+
+# ============================================================
+# Jupyter
+# ============================================================
+
+.ipynb_checkpoints/
+
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+
+*.bak
+*.tmp
