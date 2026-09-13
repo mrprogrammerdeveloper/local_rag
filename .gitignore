@@ -107,9 +107,12 @@ data/vector_store/
 # Parsed references are generated during ingestion
 data/references/*.json
 
+data/evaluation/*
+
 # Keep the references directory in Git if .gitkeep exists
 !data/references/.gitkeep
 
+!data/evaluation/.gitkeep
 
 # ============================================================
 # PDF documents
