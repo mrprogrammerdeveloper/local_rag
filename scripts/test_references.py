@@ -1,147 +1,117 @@
-from local_rag.config import (
-    PDF_DIRECTORY,
-    REFERENCES_PATH,
-)
+from pathlib import Path
 
 from local_rag.ingestion.pdf_loader import PDFLoader
-from local_rag.ingestion.reference_parser import (
-    ReferenceParser,
-)
-from local_rag.references.store import (
-    ReferenceStore,
-)
-from local_rag.retrieval.citation_extractor import (
-    CitationExtractor,
-)
+from local_rag.ingestion.reference_parser import ReferenceParser
 
 
-def main() -> None:
+EXPECTED_REFERENCES = {
+    "GJETA-2025-0260 (1).pdf": 77,
+    "test.pdf": 158,
+}
 
-    pdf_files = sorted(
-        PDF_DIRECTORY.glob("*.pdf")
-    )
 
-    if not pdf_files:
-        raise RuntimeError(
-            f"No PDFs found in {PDF_DIRECTORY}"
-        )
-
-    pdf_file = pdf_files[0]
-
-    print(
-        f"Testing PDF: {pdf_file.name}"
-    )
-
+def main():
     loader = PDFLoader()
-
-    pages = loader.load(
-        pdf_file
-    )
-
-    print(
-        f"Pages loaded: {len(pages)}"
-    )
-
     parser = ReferenceParser()
 
-    references = parser.parse(
-        pages
+    pdf_directory = Path(
+        "data/pdfs"
     )
 
-    print(
-        f"References parsed: {len(references)}"
-    )
-
-    if not references:
-        raise RuntimeError(
-            "No references were extracted."
+    for filename, expected_count in (
+        EXPECTED_REFERENCES.items()
+    ):
+        pdf_path = (
+            pdf_directory
+            / filename
         )
 
-    print(
-        "\nFirst reference:"
-    )
-
-    print(
-        f"[{references[0].number}] "
-        f"{references[0].content}"
-    )
-
-    print(
-        "\nLast reference:"
-    )
-
-    print(
-        f"[{references[-1].number}] "
-        f"{references[-1].content}"
-    )
-
-    store = ReferenceStore(
-        REFERENCES_PATH
-    )
-
-    store.save(
-        source=pdf_file.name,
-        references=references,
-    )
-
-    print(
-        "\nReference store saved."
-    )
-
-    reference_24 = store.get(
-        source=pdf_file.name,
-        number=24,
-    )
-
-    print(
-        "\nReference 24:"
-    )
-
-    print(
-        reference_24
-    )
-
-    if reference_24 is None:
-        raise RuntimeError(
-            "Reference 24 was not found."
-        )
-
-    extractor = CitationExtractor()
-
-    fake_answer = (
-        "Electromagnetic cloaking has been "
-        f"demonstrated using metamaterials "
-        f"[{pdf_file.name}, ref 24]."
-    )
-
-    used_references = extractor.extract(
-        fake_answer
-    )
-
-    print(
-        "\nExtracted citations:"
-    )
-
-    for reference in used_references:
+        print()
+        print("=" * 70)
         print(
-            reference
+            f"Testing PDF: {filename}"
+        )
+        print("=" * 70)
+
+        pages = loader.load(
+            pdf_path
         )
 
-        content = store.get(
-            source=reference.source,
-            number=reference.number,
+        references = parser.parse(
+            pages
         )
 
         print(
-            "Resolved reference:"
+            f"Pages loaded: "
+            f"{len(pages)}"
         )
 
         print(
-            content
+            f"References parsed: "
+            f"{len(references)}"
         )
 
+        assert (
+            len(references)
+            == expected_count
+        ), (
+            f"{filename}: "
+            f"expected "
+            f"{expected_count} references, "
+            f"got {len(references)}"
+        )
+
+        assert references, (
+            f"{filename}: "
+            "no references parsed"
+        )
+
+        assert (
+            references[0].number
+            == 1
+        ), (
+            f"{filename}: "
+            "first reference is not 1"
+        )
+
+        assert (
+            references[-1].number
+            == expected_count
+        ), (
+            f"{filename}: "
+            f"last reference should be "
+            f"{expected_count}, "
+            f"got "
+            f"{references[-1].number}"
+        )
+
+        print()
+        print(
+            "First reference:"
+        )
+        print(
+            f"[{references[0].number}] "
+            f"{references[0].content}"
+        )
+
+        print()
+        print(
+            "Last reference:"
+        )
+        print(
+            f"[{references[-1].number}] "
+            f"{references[-1].content}"
+        )
+
+        print()
+        print(
+            "✓ Reference parsing passed"
+        )
+
+    print()
     print(
-        "\nAll reference tests passed."
+        "All reference parser "
+        "regression tests passed."
     )
 
 

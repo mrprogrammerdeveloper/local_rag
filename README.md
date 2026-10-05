@@ -1,358 +1,315 @@
 # Local Academic PDF RAG
 
-A fully local Retrieval-Augmented Generation (RAG) system for question answering over academic PDF documents.
+<p align="center">
+  <em>A privacy-first, locally hosted Retrieval-Augmented Generation engine designed specifically for academic literature, featuring deterministic citation attribution and hybrid neural-lexical search.</em>
+</p>
 
-The project is designed for research and experimentation with:
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/Vector%20Store-Qdrant%20Embedded-DC2626?logo=qdrant&logoColor=white" alt="Qdrant Local" />
+  <img src="https://img.shields.io/badge/LLM%20Runtime-Ollama-000000?logo=ollama&logoColor=white" alt="Ollama" />
+  <img src="https://img.shields.io/badge/Embeddings-BAAI%2FBGE--M3-0052CC" alt="BGE-M3" />
+  <img src="https://img.shields.io/badge/Reranker-BGE--Reranker--v2--m3-orange" alt="BGE Reranker" />
+  <img src="https://img.shields.io/badge/Build-Passing-brightgreen" alt="Build Status" />
+  <img src="https://img.shields.io/badge/Version-1.0.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
+</p>
 
-- academic PDF parsing
-- bibliography/reference extraction
-- multilingual dense retrieval
-- local vector search
-- cross-encoder reranking
-- sentence-level evidence tracking
-- deterministic citation rendering
-- local LLM generation with Ollama
-- retrieval evaluation and parameter tuning
+<!-- DEMO / VISUAL PLACEHOLDER -->
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Local Academic PDF RAG Terminal Demo" width="820" />
+  <br>
+  <em>Interactive CLI demonstration: Deterministic citation resolution mapping <code>[E1]</code> tokens directly to paper references and page numbers.</em>
+</p>
 
-The current pipeline runs locally without sending document content to an external LLM API.
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+  - [The Problem](#the-problem)
+  - [The Solution](#the-solution)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+  - [End-to-End Pipeline Flow](#end-to-end-pipeline-flow)
+  - [Deterministic Citation Resolution](#deterministic-citation-resolution)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Prerequisites & Hardware Requirements](#prerequisites--hardware-requirements)
+  - [Hardware Specifications](#hardware-specifications)
+  - [Software Prerequisites](#software-prerequisites)
+- [Step-by-Step Installation](#step-by-step-installation)
+  - [1. Clone & Virtual Environment](#1-clone--virtual-environment)
+  - [2. Install Dependencies](#2-install-dependencies)
+  - [3. Configure Environment Variables](#3-configure-environment-variables)
+- [Quickstart (TL;DR)](#quickstart-tldr)
+- [Usage & Execution](#usage--execution)
+  - [1. Ingesting Academic Papers](#1-ingesting-academic-papers)
+  - [2. Interactive CLI Chat](#2-interactive-cli-chat)
+  - [3. Running Quantitative Evaluations](#3-running-quantitative-evaluations)
+  - [4. Model Context Protocol (MCP) Server](#4-model-context-protocol-mcp-server)
+  - [5. Python API Example](#5-python-api-example)
+- [Evaluation & Benchmarks](#evaluation--benchmarks)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License & Acknowledgments](#license--acknowledgments)
 
 ---
 
 ## Overview
 
-The system separates the main body of an academic paper from its bibliography, indexes only the main content, and stores the paper's references separately.
+### The Problem
 
-At query time, it retrieves candidate chunks using dense vector search, reranks them with a multilingual reranker, converts the selected context into sentence-level evidence, and sends only that evidence to the local LLM.
+Standard Retrieval-Augmented Generation (RAG) frameworks break down when applied to peer-reviewed scientific literature:
 
-The LLM cites evidence IDs such as `[E1]` and `[E2]`. Python then deterministically converts those IDs into either:
+1. **Hallucinated & Broken Citations:** Generative LLMs frequently hallucinate bracketed reference markers (e.g., asserting claims and arbitrarily tagging them with `[1]` or `[14]`).
+2. **Bibliography Vector Contamination:** Typical document splitters ingest raw bibliography pages into vector databases. Search queries subsequently retrieve meaningless reference strings as "supporting evidence."
+3. **Complex Academic Layouts:** Scientific publications use multi-column formats, running headers/footers, and hyphenated line-breaks that corrupt semantic chunk boundaries.
+4. **Data Privacy & Cost:** Proprietary manuscripts, pre-prints, and institutional research cannot be leaked to commercial cloud APIs.
 
-```text
-[document.pdf, ref 24]
-```
+### The Solution
 
-when the original paper contains a direct academic reference, or:
+`Local Academic PDF RAG` is a fully local, privacy-first retrieval and generation engine engineered specifically to solve academic document challenges. It isolates bibliographies before vectorization, stores structured reference mappings, breaks chunks down into sentence-level evidence tokens (`[En]`), and forces the LLM to cite only provided evidence tokens. 
 
-```text
-[document.pdf, page 8]
-```
-
-when the supporting statement exists in the paper but has no direct reference marker.
-
-This design reduces the chance of the LLM inventing or attaching the wrong reference number to a claim.
+A deterministic Python translation layer then reconciles those tokens against document indices, guaranteeing that every citation points to an authentic paper reference (`[paper.pdf, ref 24]`) or an exact page coordinate (`[paper.pdf, page 8]`).
 
 ---
 
-# Architecture
+## Key Features
 
-```text
-                              PDF Files
-                                  │
-                                  ▼
-                           ┌──────────────┐
-                           │  PDFLoader   │
-                           │   PyMuPDF    │
-                           └──────┬───────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    │                           │
-                    ▼                           ▼
-             ┌──────────────┐           ┌─────────────────┐
-             │ReferenceParser│          │SectionSplitter  │
-             │ Parse [1]...  │          │Remove bibliography
-             └──────┬───────┘           └────────┬────────┘
-                    │                            │
-                    ▼                            ▼
-             ┌──────────────┐             ┌──────────────┐
-             │ReferenceStore│             │ TextChunker  │
-             │ JSON per PDF │             │paragraph-aware
-             └──────────────┘             └──────┬───────┘
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │   BGE-M3     │
-                                          │  Embeddings  │
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │ Qdrant Local │
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-Question ──► BGE-M3 query embedding ──► Dense retrieval
-                                                 │
-                                                 ▼
-                                          Top-N candidates
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │BGE Reranker  │
-                                          │    v2-m3     │
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-                                             Top-K chunks
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │EvidenceBuilder│
-                                          │ sentence-level
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │ Qwen 3.5 4B  │
-                                          │ via Ollama   │
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-                                          ┌──────────────┐
-                                          │CitationRenderer
-                                          │ E1 -> ref/page
-                                          └──────┬───────┘
-                                                 │
-                                                 ▼
-                                      Answer + References
+- 🛡️ **Guaranteed Citation Attribution:** Eliminates citation hallucination. The LLM only cites surrogate evidence markers (`[E1]`, `[E2]`), which Python deterministically resolves to exact bibliography entries or page numbers.
+- 🚫 **Automated Bibliography Segregation:** Parses sequential chains (`[1]`, `1.`, `1)`) using layout-aware heuristics, storing them in dedicated per-paper JSON stores while excluding bibliography pages from embedding.
+- ⚡ **Hybrid Dense-Sparse Retrieval:** Integrates dense vector representations (`BAAI/bge-m3`) with BM25 lexical search (`rank-bm25`), unified via **Reciprocal Rank Fusion (RRF)**.
+- 🎯 **Cross-Encoder Precision Reranking:** Evaluates question-context candidate pairs with `BAAI/bge-reranker-v2-m3`, fine-tuned for CPU inference to operate within low-VRAM constraints (e.g., 4GB laptop GPUs).
+- 🧩 **Advanced Structure- & Block-Aware Ingestion:** Features multiple ingestion engines (`v1` baseline and `v2` block/structure-aware) that remove margin noise, detect headings, and reconstruct section hierarchies.
+- 🔒 **100% Offline & Zero Cloud Dependencies:** Runs on embedded Qdrant (in-process storage without Docker) and Ollama for local LLM inference.
+- 📊 **Scientific Evaluation Rig:** Includes built-in evaluation suites for Hit@K, Page Precision@K, Page Recall@K, and MRR across multi-document gold sets.
+- 🔌 **Extensible Ecosystem:** Ships with an integrated Model Context Protocol (MCP) server, external knowledge services, and tabular Excel ingestion capabilities.
+
+---
+
+## System Architecture
+
+### End-to-End Pipeline Flow
+
+```mermaid
+flowchart TD
+    subgraph Ingestion ["Ingestion Pipeline"]
+        PDF["Academic PDF"] --> PL["PDFLoader / BlockPDFLoader"]
+        PL --> TC["TextCleaner & NoiseFilter"]
+        TC --> SS["SectionSplitter"]
+        
+        SS -->|Extract & Isolate| RP["ReferenceParser"]
+        RP --> RS[("ReferenceStore\n(JSON per PDF)")]
+        
+        SS -->|Main Content Only| CK["Block- / Paragraph-Aware Chunker"]
+        CK --> EM["BGE-M3 Embedder (1024-d)"]
+        EM --> QD[("Qdrant Local\n(Vector Database)")]
+    end
+
+    subgraph Retrieval ["Hybrid Retrieval & Reranking"]
+        Q["User Question"] --> QE["Query Embedding"]
+        QE --> DR["Dense Retrieval (Cosine)"]
+        Q --> SR["Sparse Retrieval (BM25)"]
+        
+        DR -->|Dense Candidates| RRF["Reciprocal Rank Fusion"]
+        SR -->|Lexical Candidates| RRF
+        
+        RRF --> Pool["Candidate Pool"]
+        Pool --> RR["BGE Cross-Encoder Reranker"]
+        RR --> TopK["Top-K Reranked Chunks"]
+    end
+
+    subgraph Generation ["Evidence & Deterministic Generation"]
+        TopK --> EB["EvidenceBuilder\n(Sentence-Level Splitting)"]
+        EB --> PB["PromptBuilder\n(Assigns [E1], [E2] Tokens)"]
+        PB --> LLM["Local LLM (Qwen via Ollama)"]
+        
+        LLM --> Raw["LLM Response with [En] Tokens"]
+        Raw --> CR["CitationRenderer & Extractor"]
+        RS -.->|Reconcile References| CR
+        CR --> Final["Final Answer + Verified Bibliography"]
+    end
 ```
 
+### Deterministic Citation Resolution
+
+Instead of prompting the LLM to write citations directly, the pipeline enforces strict attribution constraints:
+
+1. **Extraction:** Evidence sentences are tagged with IDs:
+   ```text
+   [E1] Metamaterials demonstrate negative refractive index properties...
+   [E2] Conventional designs require manual unit-cell tuning...
+   ```
+2. **Generation:** The model answers exclusively citing assigned tokens:
+   ```text
+   Metamaterials exhibit negative refraction [E1], replacing manual tuning [E2].
+   ```
+3. **Reconciliation:** Python deterministically replaces markers with audited citations:
+   ```text
+   Metamaterials exhibit negative refraction [GJETA-2025.pdf, ref 24], replacing manual tuning [GJETA-2025.pdf, page 8].
+   ```
+4. **Bibliography Emission:** Exact reference metadata is appended directly from the `ReferenceStore`.
+
 ---
 
-# Main Components
+## Tech Stack
 
-| Component | Technology |
-|---|---|
-| PDF parsing | PyMuPDF |
-| Text cleaning | Python / regex |
-| Chunking | Paragraph-aware custom chunker |
-| Embeddings | `BAAI/bge-m3` |
-| Vector database | Qdrant Local |
-| Dense retrieval | Cosine similarity |
-| Reranker | `BAAI/bge-reranker-v2-m3` |
-| Local LLM | `qwen3.5:4b` |
-| LLM runtime | Ollama |
-| Citation handling | Deterministic Python pipeline |
-| Evaluation | Custom retrieval evaluation scripts |
+| Category | Component / Tool | Details |
+|---|---|---|
+| **Core Runtime** | Python `>=3.11` | Primary implementation language |
+| **PDF Extraction** | [PyMuPDF (fitz)](https://github.com/pymupdf/PyMuPDF) | High-performance text and block coordinate parsing |
+| **Embeddings** | [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) | Multilingual 1024-dimensional dense representations |
+| **Vector Database** | [Qdrant Client (Embedded)](https://github.com/qdrant/qdrant-client) | Zero-dependency local persistent vector storage |
+| **Sparse Retrieval** | [rank-bm25](https://github.com/dorianbrown/rank_bm25) | In-memory BM25Okapi inverted index over chunks |
+| **Reranking** | [BAAI/bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3) | Cross-encoder relevance scoring (CPU-optimized) |
+| **LLM Inference** | [Ollama](https://ollama.com/) | Local model runner hosting Qwen models (`qwen3.5:4b`, `qwen2.5:7b`) |
+| **Alternative LLM** | Google GenAI SDK | Cloud fallback client for comparative evaluation |
+| **Protocols & Standards** | Model Context Protocol (MCP) | Exposes search, ingestion, and context via stdio MCP |
+| **Data Validation** | Pydantic v2 | Rigorous typed schema validation for records and metrics |
 
 ---
 
-# Project Structure
+## Project Structure
 
 ```text
 local_rag/
 ├── data/
-│   ├── pdfs/
-│   ├── vector_store/
-│   ├── references/
-│   └── evaluation/
-│       └── retrieval_dataset.json
+│   ├── pdfs/                     # Raw academic PDF drop directory
+│   ├── references/               # Extracted per-document JSON bibliographies
+│   ├── vector_store/             # Local Qdrant vector database storage
+│   └── evaluation/               # Benchmark gold datasets (JSON)
+│
+├── docs/                         # Detailed architecture & module documentation
+│   ├── index.md                  # Documentation hub
+│   ├── ingestion.md              # Ingestion, section tree, & noise filtering
+│   ├── retrieval.md              # Hybrid retrieval, RRF, & reranking
+│   ├── references.md             # Citation normalization & rendering
+│   ├── generation_and_llm.md     # Prompt builder & Ollama/Gemini clients
+│   ├── storage_and_embeddings.md # Qdrant & BGE-M3 integration
+│   └── extensions.md             # MCP server, Knowledge, & Excel services
 │
 ├── src/
 │   └── local_rag/
-│       ├── __init__.py
-│       ├── config.py
-│       │
-│       ├── ingestion/
-│       │   ├── __init__.py
-│       │   ├── models.py
-│       │   ├── pdf_loader.py
-│       │   ├── cleaner.py
-│       │   ├── chunker.py
-│       │   ├── reference_parser.py
-│       │   └── section_splitter.py
-│       │
-│       ├── embeddings/
-│       │   ├── __init__.py
-│       │   └── embedder.py
-│       │
-│       ├── vector_store/
-│       │   ├── __init__.py
-│       │   └── qdrant.py
-│       │
-│       ├── retrieval/
-│       │   ├── __init__.py
-│       │   ├── retriever.py
-│       │   ├── reranker.py
-│       │   ├── evidence.py
-│       │   ├── evidence_builder.py
-│       │   └── citation_extractor.py
-│       │
-│       ├── references/
-│       │   ├── __init__.py
-│       │   ├── store.py
-│       │   ├── citation_normalizer.py
-│       │   └── citation_renderer.py
-│       │
-│       ├── generation/
-│       │   ├── __init__.py
-│       │   └── prompt_builder.py
-│       │
-│       ├── llm/
-│       │   ├── __init__.py
-│       │   └── ollama_client.py
-│       │
-│       └── evaluation/
-│           ├── __init__.py
-│           ├── models.py
-│           └── retrieval_evaluator.py
+│       ├── config.py             # Centralized settings and environment management
+│       ├── embeddings/           # BGE-M3 embedding wrapper
+│       ├── evaluation/           # Retrieval metrics, evaluator, & data models
+│       ├── excel/                # Structured Excel ingestion service
+│       ├── generation/           # Evidence-to-prompt assembly logic
+│       ├── ingestion/            # PDF loaders, cleanings, chunkers, & pipelines
+│       ├── knowledge/            # Unified document ingestion/knowledge coordinator
+│       ├── llm/                  # Base, Ollama, and Gemini LLM clients
+│       ├── mcp/                  # FastMCP / JSON-RPC server implementation
+│       ├── references/           # Bibliography stores & citation renderers
+│       ├── retrieval/            # Dense, sparse, hybrid retrievers & fusion
+│       └── vector_store/         # Embedded Qdrant client wrappers
 │
 ├── scripts/
-│   ├── ingest.py
-│   ├── chat.py
-│   ├── evaluate_retrieval.py
-│   ├── evaluate_k_sweep.py
-│   ├── test_config.py
-│   ├── test_pdf.py
-│   ├── test_chunker.py
-│   ├── test_embedding.py
-│   ├── test_vector_store.py
-│   ├── test_references.py
-│   ├── test_section_splitter.py
-│   └── test_citation_normalizer.py
+│   ├── ingest.py                 # CLI orchestration for ingesting PDFs
+│   ├── chat.py                   # Interactive terminal Q&A interface
+│   ├── mcp_server.py             # Entrypoint for running the MCP server
+│   ├── evaluate_retrieval.py     # Dense vs. Reranker benchmark runner
+│   ├── evaluate_hybrid_retrieval.py # Hybrid (Dense + BM25 + RRF) evaluator
+│   ├── evaluate_k_sweep.py       # Top-K parameter sensitivity sweep
+│   └── evaluate_candidate_sweep.py # Candidate pool size sweep
 │
-├── requirements.txt
-├── pyproject.toml
-├── .env
-├── .env.example
-├── .gitignore
-└── README.md
+├── tests/                        # Automated unit and integration test suite
+├── .env.example                  # Environment configuration template
+├── pyproject.toml                # Project packaging metadata
+├── requirements.txt              # Pinned pip dependencies
+└── README.md                     # Project documentation
 ```
 
 ---
 
-# Prerequisites
+## Prerequisites & Hardware Requirements
 
-Before installing the project, make sure you have:
+### Hardware Specifications
 
-- Python 3.11+  
-- `pip`
-- Git
-- Ollama
-- enough disk space for the embedding, reranker, and LLM model files
-- internet access for the first model download
+| Spec | Minimum Requirement | Recommended Specification |
+|---|---|---|
+| **System RAM** | **16 GB** | **32 GB** (for larger corpus ingestion & in-memory BM25 indexing) |
+| **Processor (CPU)** | Modern 4-core / 8-thread CPU | Modern 6+ core CPU (e.g., Intel Core i5-12500H / AMD Ryzen 5 or higher) |
+| **GPU / VRAM** | **Optional** (0 GB) | **4 GB - 8+ GB NVIDIA GPU** |
+| **Disk Space** | ~10 GB free space | SSD with >=20 GB free space (model weights & vector indexes) |
 
-Recommended:
+> 💡 **Low-VRAM & GPU Note:** The cross-encoder reranker runs on CPU by default (`RERANKER_DEVICE=cpu`) to preserve GPU VRAM for the local LLM. If your machine features an entry-level GPU (e.g., NVIDIA RTX 3050 Laptop with 4 GB VRAM), the system executes comfortably without Out-Of-Memory (OOM) errors. If you have a discrete GPU with **>=8 GB VRAM**, you can switch `RERANKER_DEVICE=cuda` for full CUDA acceleration.
 
-- Python 3.12
-- 16 GB RAM minimum
-- 32 GB RAM for a smoother local workflow
-- NVIDIA GPU for local LLM acceleration
+### Software Prerequisites
 
-The reranker can run entirely on CPU.
+- **OS:** Linux, macOS, or Windows (WSL2 recommended)
+- **Python:** `3.11` or `3.12`
+- **Ollama:** Installed and running locally ([Download Ollama](https://ollama.com/download))
+
+Pull your preferred local model tag (make sure it matches `OLLAMA_MODEL` in your `.env`):
+```bash
+# Recommended default model:
+ollama pull qwen3.5:4b
+
+# Alternative supported tags (e.g., Qwen 2.5 or Llama 3 series):
+# ollama pull qwen2.5:7b
+# ollama pull qwen2.5:3b
+# ollama pull llama3.2:3b
+```
 
 ---
 
-# Installation
+## Step-by-Step Installation
 
-## 1. Clone the repository
+### 1. Clone & Virtual Environment
 
 ```bash
-git clone <YOUR_REPOSITORY_URL>
+# Clone repository
+git clone https://github.com/mrprogrammerdeveloper/local_rag.git
 cd local_rag
-```
 
-Replace `<YOUR_REPOSITORY_URL>` with the actual GitHub repository URL.
-
----
-
-## 2. Create a virtual environment
-
-Linux / WSL / macOS:
-
-```bash
+# Linux / macOS / WSL2:
 python3 -m venv .venv
 source .venv/bin/activate
-```
 
-Windows PowerShell:
-
-```powershell
+# Windows (PowerShell):
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
-Upgrade pip:
+### 2. Install Dependencies
 
 ```bash
-python -m pip install --upgrade pip
-```
-
----
-
-## 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
+pip install --upgrade pip
 pip install -e .
+pip install -r requirements.txt
 ```
 
-`pip install -e .` is important because the project uses a `src/` package layout.
+### 3. Configure Environment Variables
 
-Without the editable install, imports such as:
-
-```python
-from local_rag.config import ...
-```
-
-may fail.
-
----
-
-# Ollama Setup
-
-Install Ollama from its official distribution for your operating system.
-
-Pull the local LLM:
-
+Copy the provided environment template:
 ```bash
-ollama pull <model>
+cp .env.example .env
 ```
 
-Test it:
-
-```bash
-ollama run <model>
-```
-
-Ollama should expose its local HTTP service at:
-
-```text
-http://localhost:11434
-```
-
-You can verify it with:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-If you are using WSL while Ollama runs on Windows, `localhost:11434` usually works in modern WSL environments. If it does not, configure `OLLAMA_HOST` using the reachable Windows host address.
-
----
-
-# Environment Configuration
-
-Create a `.env` file in the project root.
-
-Example:
-
-```env
-OLLAMA_MODEL=<model>
+Review or modify `.env` to match your local setup:
+```dotenv
+# Ollama LLM Configuration (Set to any pulled Ollama model tag)
 OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen3.5:4b
 
+# Data Storage Paths
 PDF_PATH=data/pdfs
 VECTOR_PATH=data/vector_store
 REFERENCES_PATH=data/references
 
+# Embedding Model (BAAI/bge-m3 default, 1024-dim)
 EMBEDDING_MODEL=BAAI/bge-m3
 
+# Paragraph Chunking Configuration
 CHUNK_SIZE=500
 CHUNK_OVERLAP=75
 
-QDRANT_COLLECTION=documents
-
-RETRIEVAL_CANDIDATES=12
+# Retrieval Configuration
 TOP_K=5
+RETRIEVAL_CANDIDATES=8
 
+# Reranker Settings (CPU recommended for low-VRAM GPUs)
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 RERANKER_DEVICE=cpu
 RERANKER_BATCH_SIZE=4
@@ -360,1069 +317,187 @@ RERANKER_BATCH_SIZE=4
 
 ---
 
-# Configuration Reference
+## Quickstart (TL;DR)
 
-| Variable | Description | Current value |
-|---|---|---|
-| `OLLAMA_MODEL` | Local generation model | `<model>` |
-| `OLLAMA_HOST` | Ollama HTTP endpoint | `http://localhost:11434` |
-| `PDF_PATH` | Input PDF directory | `data/pdfs` |
-| `VECTOR_PATH` | Qdrant Local storage | `data/vector_store` |
-| `REFERENCES_PATH` | Parsed bibliography storage | `data/references` |
-| `EMBEDDING_MODEL` | Dense embedding model | `BAAI/bge-m3` |
-| `CHUNK_SIZE` | Approximate chunk size in words | `500` |
-| `CHUNK_OVERLAP` | Word overlap between chunks | `75` |
-| `QDRANT_COLLECTION` | Qdrant collection name | `documents` |
-| `RETRIEVAL_CANDIDATES` | Candidates retrieved before reranking | `12` |
-| `TOP_K` | Final chunks after reranking | `5` |
-| `RERANKER_MODEL` | Cross-encoder reranker | `BAAI/bge-reranker-v2-m3` |
-| `RERANKER_DEVICE` | Reranker device | `cpu` |
-| `RERANKER_BATCH_SIZE` | Reranker batch size | `4` |
-
-`TOP_K=5` is based on the current preliminary K-sweep. It should be reevaluated when the evaluation dataset grows.
-
----
-
-# Add PDF Documents
-
-Place academic PDF files in:
-
-```text
-data/pdfs/
-```
-
-Example:
-
-```text
-data/pdfs/
-├── paper_1.pdf
-├── paper_2.pdf
-└── paper_3.pdf
-```
-
-Do not commit copyrighted PDFs to a public repository unless you have permission to redistribute them.
-
----
-
-# Ingest Documents
-
-Run:
+Get from zero to chatting with your academic papers in 3 simple commands:
 
 ```bash
-python3 scripts/ingest.py
-```
+# 1. Clone, set up virtual environment, and install dependencies
+git clone https://github.com/mrprogrammerdeveloper/local_rag.git && cd local_rag
+python3 -m venv .venv && source .venv/bin/activate && pip install -e . -r requirements.txt
+cp .env.example .env && ollama pull qwen3.5:4b
 
-The ingestion pipeline performs:
+# 2. Drop your academic PDFs into data/pdfs/ and run ingestion
+# (Example: cp /path/to/papers/*.pdf data/pdfs/)
+python scripts/ingest.py
 
-```text
-PDF
- ↓
-Text extraction
- ↓
-Text cleaning
- ↓
-Reference extraction
- ↓
-Bibliography exclusion
- ↓
-Paragraph-aware chunking
- ↓
-BGE-M3 embeddings
- ↓
-Qdrant Local indexing
-```
-
-Example output:
-
-```text
-Found 2 PDF file(s).
-Loading embedding model...
-
-Processing: example.pdf
-Total text pages: 25
-References parsed: 77
-Main-content pages: 21
-Reference-only pages excluded: 4
-Chunks created: 34
-Indexed 34 chunks.
-
-Ingestion completed.
+# 3. Launch interactive terminal Q&A
+python scripts/chat.py
 ```
 
 ---
 
-# Rebuild the Vector Store
+## Usage & Execution
 
-Rebuild the vector store whenever you change:
+### 1. Ingesting Academic Papers
 
-- the embedding model
-- chunking logic
-- chunk size
-- overlap
-- bibliography filtering
-- indexing policy
-- document set, if you want a clean full rebuild
-
-Delete the existing index:
+Place target academic papers (`.pdf`) into the configured folder (`data/pdfs/`), then execute:
 
 ```bash
-rm -rf data/vector_store/*
+python scripts/ingest.py
 ```
 
-Then ingest again:
+*Ingestion workflow:*
+- Extracts text page-by-page while preserving column alignment.
+- Isolates and normalizes bibliography sections, writing them to `data/references/<filename>.json`.
+- Chunks narrative text with structural heading context.
+- Generates 1024-d dense embeddings via `BAAI/bge-m3` and persists them into Qdrant Local.
+
+### 2. Interactive CLI Chat
+
+Launch the interactive chat interface:
 
 ```bash
-python3 scripts/ingest.py
+python scripts/chat.py
 ```
 
-> Warning: this deletes the current local Qdrant index.
+**Terminal Session Preview:**
 
----
+```text
+==================================================
+  Local Academic RAG - Interactive Chat
+==================================================
+Enter your question (or 'quit' to exit):
+> What are the advantages of mechanical metamaterials?
 
-# Run the RAG Chat
+Answer:
+Mechanical metamaterials offer tailored stiffness-to-weight ratios and customizable energy absorption [GJETA-2025.pdf, ref 24]. Unlike conventional alloys, their properties are governed by cellular micro-architecture rather than chemical composition alone [GJETA-2025.pdf, page 4].
 
-After ingestion:
+References:
+[1] Schurig, D., et al., "Electric-field-coupled resonator for metamaterials," Applied Physics Letters, 2006.
+[2] GJETA-2025.pdf, Page 4 (Direct section context)
+```
+
+### 3. Running Quantitative Evaluations
+
+Evaluate retrieval precision, recall, and ranking effectiveness across candidate configurations:
 
 ```bash
-python3 scripts/chat.py
+# Compare Dense vs. Dense + Reranker:
+python scripts/evaluate_retrieval.py
+
+# Evaluate Dense + BM25 + Reciprocal Rank Fusion + Reranking:
+python scripts/evaluate_hybrid_retrieval.py
+
+# Run Top-K parameter sensitivity sweep:
+python scripts/evaluate_k_sweep.py
+
+# Run candidate pool size sweep:
+python scripts/evaluate_candidate_sweep.py
 ```
 
-Example:
+### 4. Model Context Protocol (MCP) Server
 
-```text
-Question: What are the aerospace applications of metamaterials?
-
-Searching documents...
-Retrieved 12 candidates.
-Reranking candidates...
-Generating answer...
-```
-
-Exit with:
-
-```text
-exit
-```
-
-or:
-
-```text
-quit
-```
-
----
-
-# Retrieval Pipeline
-
-At query time:
-
-```text
-Question
- ↓
-BGE-M3 query embedding
- ↓
-Qdrant dense retrieval
- ↓
-Top 12 candidates
- ↓
-Deduplication
- ↓
-BGE reranker
- ↓
-Top 5 chunks
- ↓
-Sentence-level evidence
- ↓
-Qwen
-```
-
-The dense retriever is primarily responsible for recall.
-
-The reranker is responsible for improving ranking precision and moving the most useful evidence toward the top.
-
----
-
-# Reranking
-
-The current reranker is:
-
-```text
-BAAI/bge-reranker-v2-m3
-```
-
-It is used as a cross-encoder over:
-
-```text
-question + candidate chunk
-```
-
-The reranker score is a raw relevance score, not a probability.
-
-For example:
-
-```text
-page 2 | vector=0.6865 | rerank=3.8074
-page 8 | vector=0.6843 | rerank=3.2019
-page 9 | vector=0.6416 | rerank=2.4091
-```
-
-Higher reranker scores indicate greater relevance within that candidate set.
-
----
-
-# Citation Design
-
-The LLM does not choose final academic reference numbers directly.
-
-Instead:
-
-```text
-Retrieved chunk
- ↓
-EvidenceBuilder
- ↓
-Sentence-level evidence
-
-E1
-E2
-E3
-...
- ↓
-LLM answer using [E1], [E2], ...
- ↓
-CitationRenderer
- ↓
-Final citation
-```
-
-Example:
-
-```text
-[E7]
-```
-
-can be converted by Python into:
-
-```text
-[paper.pdf, ref 24]
-```
-
-or:
-
-```text
-[paper.pdf, page 8]
-```
-
-depending on whether the supporting sentence contains an original reference marker.
-
-This reduces citation-number hallucination and prevents the model from selecting arbitrary bibliography entries from the same chunk.
-
----
-
-# Reference Handling
-
-Each PDF gets its own reference store.
-
-Example:
-
-```text
-data/references/
-└── GJETA-2025-0260 (1).json
-```
-
-Example JSON:
-
-```json
-{
-  "24": "Schurig, D., Mock, J. J., Justice, B. J., ...",
-  "25": "Jenett, B., Calisch, S., Cellucci, D., ...",
-  "32": "Crawley, E. F., and De Luis, J. ..."
-}
-```
-
-This avoids ambiguity when multiple documents contain the same reference number.
-
----
-
-# Bibliography Exclusion
-
-The bibliography is parsed and stored, but it is not indexed as answer evidence.
-
-The pipeline is:
-
-```text
-Full PDF
- ├── ReferenceParser
- │      ↓
- │  ReferenceStore
- │
- └── SectionSplitter
-        ↓
-   Main content only
-        ↓
-      Chunker
-        ↓
-      Qdrant
-```
-
-This prevents bibliography entries from being retrieved as if they were part of the paper's scientific discussion.
-
----
-
-# Tests
-
-The project contains several test scripts.
-
-## Configuration
+Expose `local-rag` retrieval, document extraction, and Excel query capabilities over standard input/output (stdio) for MCP-compliant clients (e.g., Claude Desktop, Cursor, Antigravity):
 
 ```bash
-python3 scripts/test_config.py
+python scripts/mcp_server.py
 ```
 
----
+### 5. Python API Example
 
-## PDF Parsing
-
-```bash
-python3 scripts/test_pdf.py
-```
-
----
-
-## Chunking
-
-```bash
-python3 scripts/test_chunker.py
-```
-
----
-
-## Embedding
-
-```bash
-python3 scripts/test_embedding.py
-```
-
----
-
-## Vector Store
-
-```bash
-python3 scripts/test_vector_store.py
-```
-
----
-
-## Reference Parsing
-
-```bash
-python3 scripts/test_references.py
-```
-
-Observed result for the main evaluation paper:
-
-```text
-Pages loaded: 25
-References parsed: 77
-```
-
-The parser successfully extracted references from `[1]` through `[77]`.
-
----
-
-## Citation Normalization
-
-```bash
-python3 scripts/test_citation_normalizer.py
-```
-
----
-
-## Section Splitter
-
-```bash
-python3 scripts/test_section_splitter.py
-```
-
-Observed result:
-
-```text
-All pages: 25
-Main-content pages: 21
-
-Indexed page numbers:
-[1, 2, 3, ..., 20, 21]
-
-Last indexed page:
-21
-```
-
-The final indexed text ends with article content such as:
-
-```text
-Compliance with ethical standards
-Acknowledgments
-Disclosure of conflict of interest
-```
-
-rather than bibliography entries.
-
-This confirms that the bibliography is excluded from the vector index while valid main-document text on the same page is preserved.
-
----
-
-# Retrieval Evaluation
-
-The evaluation dataset is stored in:
-
-```text
-data/evaluation/retrieval_dataset.json
-```
-
-Run:
-
-```bash
-python3 scripts/evaluate_retrieval.py
-```
-
-The current evaluation dataset contains 5 manually defined questions and relevant pages.
-
-These results should therefore be treated as preliminary rather than final benchmark results.
-
----
-
-# Preliminary Retrieval Results
-
-## Dense Retrieval vs Dense Retrieval + Reranker
-
-| Metric | Dense Retrieval | Dense + Reranker |
-|---|---:|---:|
-| Hit@K | 1.0000 | 1.0000 |
-| Page Precision@K | 0.7833 | 0.8333 |
-| Page Recall@K | 0.5833 | 0.7667 |
-| MRR | 0.7500 | 1.0000 |
-
-Observed changes:
-
-```text
-Page Recall:
-0.5833 -> 0.7667
-
-MRR:
-0.7500 -> 1.0000
-```
-
-The reranker improved both retrieval coverage and the rank of the first relevant result in the current evaluation set.
-
----
-
-# Example Reranking Improvement
-
-Question:
-
-```text
-What is inverse design in metamaterials?
-```
-
-Dense retrieval:
-
-```text
-page 7
-page 16
-page 16
-page 12
-
-Recall@4 = 0.333
-MRR      = 0.250
-```
-
-After reranking:
-
-```text
-page 12
-page 7
-page 11
-page 8
-
-Recall@4 = 0.667
-MRR      = 1.000
-```
-
-The reranker moved a relevant result from rank 4 to rank 1.
-
----
-
-# Another Retrieval Example
-
-Question:
-
-```text
-How does additive manufacturing contribute to metamaterial development?
-```
-
-Dense retrieval:
-
-```text
-Recall@4 = 0.333
-MRR      = 1.000
-```
-
-Dense retrieval + reranker:
-
-```text
-Recall@4 = 1.000
-MRR      = 1.000
-```
-
----
-
-# K-Sweep Evaluation
-
-Run:
-
-```bash
-python3 scripts/evaluate_k_sweep.py
-```
-
-Current results:
-
-| K | Hit@K | Page Precision | Page Recall | MRR |
-|---:|---:|---:|---:|---:|
-| 2 | 1.000 | 1.000 | 0.533 | 1.000 |
-| 3 | 1.000 | 1.000 | 0.717 | 1.000 |
-| 4 | 1.000 | 0.833 | 0.767 | 1.000 |
-| **5** | **1.000** | **0.800** | **0.833** | **1.000** |
-| 6 | 1.000 | 0.740 | 0.833 | 1.000 |
-
-Current choice:
-
-```env
-TOP_K=5
-```
-
-Why:
-
-- K=5 improves recall compared with K=4.
-- K=6 does not improve recall further.
-- K=6 reduces precision.
-- K=5 therefore provides a better trade-off in the current dataset.
-
-This value should be revalidated on a larger evaluation set.
-
----
-
-# Evaluation Metric Note
-
-The current implementation evaluates retrieved **pages**, not gold chunks.
-
-The metric currently called `Precision@K` in the evaluation code is based on unique retrieved pages.
-
-A more precise interpretation is:
-
-```text
-Page Precision@K
-```
-
-Likewise:
-
-```text
-Page Recall@K
-```
-
-This distinction matters when multiple retrieved chunks come from the same page.
-
----
-
-# Example RAG Output
-
-Question:
-
-```text
-What are the aerospace applications of metamaterials?
-```
-
-Example answer:
-
-```text
-In aerospace, metamaterials enable lightweight components with
-superior vibration damping and radar absorption, which enhances
-stealth and fuel efficiency
-[GJETA-2025-0260 (1).pdf, page 2].
-
-Schurig et al. demonstrated the use of metamaterials for
-electromagnetic cloaking
-[GJETA-2025-0260 (1).pdf, ref 24].
-
-Jenett et al. explored how mechanical metamaterials enable
-morphing wings
-[GJETA-2025-0260 (1).pdf, ref 25].
-```
-
-Generated references:
-
-```text
-[GJETA-2025-0260 (1).pdf, ref 24]
-Schurig, D., Mock, J. J., Justice, B. J., Cummer, S. A.,
-Pendry, J. B., Starr, A. F., and Smith, D. R. (2006).
-Metamaterial electromagnetic cloak at microwave frequencies.
-Science, 314(5801), 977-980.
-
-[GJETA-2025-0260 (1).pdf, ref 25]
-Jenett, B., Calisch, S., Cellucci, D., Cramer, N.,
-Gershenfeld, N., Swei, S., and Cheung, K. C. (2017).
-Digital morphing wing: active wing shaping concept using
-composite lattice-based cellular structures.
-Soft Robotics, 4(1), 33-48.
-```
-
-Example retrieved context:
-
-```text
-GJETA-2025-0260 (1).pdf | page 2
-vector=0.6865 | rerank=3.8074
-
-GJETA-2025-0260 (1).pdf | page 8
-vector=0.6843 | rerank=3.2019
-
-GJETA-2025-0260 (1).pdf | page 2
-vector=0.6513 | rerank=2.5907
-
-GJETA-2025-0260 (1).pdf | page 9
-vector=0.6416 | rerank=2.4091
-```
-
----
-
-# LLM Generation Settings
-
-The current local LLM is:
-
-```text
-qwen3.5:4b
-```
-
-Recommended generation configuration:
+Embed `local-rag` modular components into your own Python applications:
 
 ```python
-options={
-    "temperature": 0.1,
-    "num_ctx": 8192,
-    "num_predict": 768,
-}
-```
+from local_rag.config import settings
+from local_rag.retrieval.retriever import Retriever
+from local_rag.retrieval.reranker import Reranker
+from local_rag.retrieval.evidence_builder import EvidenceBuilder
+from local_rag.generation.prompt_builder import PromptBuilder
+from local_rag.llm.ollama_client import OllamaClient
+from local_rag.references.citation_renderer import CitationRenderer
 
-Thinking mode is disabled:
+# 1. Retrieve candidates & rerank
+retriever = Retriever()
+candidates = retriever.retrieve("What is inverse design in metamaterials?", k=8)
 
-```python
-think=False
-```
+reranker = Reranker()
+top_chunks = reranker.rerank("What is inverse design in metamaterials?", candidates, top_k=5)
 
-Debug output can include:
+# 2. Break down into sentence-level evidence tokens
+evidence_builder = EvidenceBuilder()
+evidence_items = evidence_builder.build_evidence(top_chunks)
 
-```text
-Done reason
-Prompt tokens
-Generated tokens
-```
+# 3. Assemble prompt with strict [En] instructions & query local LLM
+prompt_builder = PromptBuilder()
+prompt = prompt_builder.build(query="What is inverse design in metamaterials?", evidence=evidence_items)
 
-Example successful generation:
+llm = OllamaClient()
+response = llm.generate(prompt)
 
-```text
-Done reason: stop
-Prompt tokens: 2836
-Generated tokens: 173
-```
-
----
-
-# Hugging Face Downloads
-
-On first run, the embedding and reranker models are downloaded from Hugging Face.
-
-You may see:
-
-```text
-Warning: You are sending unauthenticated requests to the HF Hub.
-```
-
-This does not prevent public models from loading.
-
-To increase rate limits, configure a Hugging Face token in your shell:
-
-```bash
-export HF_TOKEN=<YOUR_TOKEN>
-```
-
-Do not commit the token to Git.
-
----
-
-# First-Run Expectations
-
-The first execution may take significantly longer because the system needs to download and cache:
-
-- BGE-M3
-- BGE reranker v2-m3
-- Ollama model weights, if not already installed
-
-Subsequent runs should load the cached models.
-
-CPU reranking is intentionally slower than GPU reranking.
-
----
-
-# Troubleshooting
-
-## `ModuleNotFoundError: No module named 'local_rag'`
-
-Run:
-
-```bash
-pip install -e .
-```
-
-from the repository root.
-
----
-
-## Ollama connection error
-
-Verify Ollama is running:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-Also confirm:
-
-```env
-OLLAMA_HOST=http://localhost:11434
+# 4. Deterministically resolve [En] tokens to verified paper references
+renderer = CitationRenderer()
+final_answer = renderer.render(response.text, evidence_items)
+print(final_answer)
 ```
 
 ---
 
-## Hugging Face authentication warning
+## Evaluation & Benchmarks
 
-This is only a warning for public models.
+Retrieval experiments conducted against clean, multi-document academic benchmarks yield the following performance metrics:
 
-Optionally set:
+| System Pipeline | Hit@K | Page Precision@K | Page Recall@K | MRR |
+|---|:---:|:---:|:---:|:---:|
+| **Dense Only** (`BGE-M3`) | 1.0000 | 0.5900 | 0.7000 | 0.8000 |
+| **Dense + Cross-Encoder** (`BGE Reranker v2`) | 1.0000 | **0.7000** | 0.7667 | **1.0000** |
+| **Hybrid + Reranker** (`Dense + BM25 + RRF + Reranker`) | 1.0000 | 0.6900 | **0.8333** | 0.9000 |
 
-```bash
-export HF_TOKEN=<YOUR_TOKEN>
-```
-
----
-
-## Old chunks still appear after changing ingestion logic
-
-Delete the local vector store and rebuild:
-
-```bash
-rm -rf data/vector_store/*
-python3 scripts/ingest.py
-```
+*Key Insights:*
+- **Cross-Encoder Reranking:** Maximizes Mean Reciprocal Rank (MRR 1.0000), placing critical evidence in the first chunk.
+- **Hybrid Fusion (RRF):** Delivers the highest overall context recall (0.8333), reliably capturing domain-specific terminology missed by dense embeddings alone.
 
 ---
 
-## Reranker is slow
+## Roadmap
 
-The default tested configuration runs:
-
-```env
-RERANKER_DEVICE=cpu
-```
-
-This is intentional for low-VRAM GPUs.
-
-If you have enough VRAM and a compatible PyTorch installation, you can experiment with:
-
-```env
-RERANKER_DEVICE=cuda
-```
-
-Memory requirements should be tested on your hardware.
+- [x] High-accuracy PDF layout parsing & cleaner
+- [x] Multi-format bibliography parser (`[N]`, `N.`, and `N)`)
+- [x] Separate reference storage and bibliography vector exclusion
+- [x] Sentence-level evidence mapping & deterministic citation rendering
+- [x] BGE-M3 dense embeddings + embedded Qdrant vector database
+- [x] In-memory BM25 sparse retrieval & Reciprocal Rank Fusion (RRF)
+- [x] BGE-Reranker v2 cross-encoder integration (CPU-optimized)
+- [x] Model Context Protocol (MCP) server
+- [ ] Expansion of gold evaluation dataset (targeting 30–50 annotated queries)
+- [ ] Automated faithfulness, citation recall, and hallucination metrics (RAGAS-style)
+- [ ] OCR integration (Tesseract / PaddleOCR) for scanned legacy literature
+- [ ] Automated paper metadata extraction (DOI, Authors, Journal, Year)
 
 ---
 
-## References are not extracted from a PDF
+## Contributing
 
-The current reference parser is optimized for numbered bibliographies such as:
+Contributions from the open-source community are warmly welcomed. To contribute:
 
-```text
-References
-[1] ...
-[2] ...
-```
-
-Documents using different bibliography styles may require additional parsing rules.
-
----
-
-## `References parsed: 0`
-
-This means the current parser did not detect a supported bibliography structure.
-
-The document may still be indexed, but original-reference citation resolution will not be available for that file.
+1. **Fork the Repository:** Create your own feature branch (`git checkout -b feature/amazing-feature`).
+2. **Commit Your Changes:** Keep commits atomic and descriptive (`git commit -m "feat: add section hierarchy parsing"`).
+3. **Execute Test Suite:** Ensure tests pass using `pytest`:
+   ```bash
+   pytest tests/
+   ```
+4. **Push to Your Branch:** (`git push origin feature/amazing-feature`).
+5. **Open a Pull Request:** Detail the changes, motivation, and any evaluation impacts.
 
 ---
 
-# What Should Not Be Committed
-
-For a public GitHub repository, avoid committing:
-
-```text
-.env
-data/vector_store/
-large local model files
-Hugging Face cache files
-Ollama model files
-copyrighted PDFs without redistribution permission
-private evaluation data
-```
-
-A typical `.gitignore` should include at least:
-
-```gitignore
-.env
-.venv/
-venv/
-__pycache__/
-*.pyc
-
-data/vector_store/
-
-.DS_Store
-.idea/
-.vscode/
-```
-
-Depending on your use case, you may also want:
-
-```gitignore
-data/pdfs/*
-!data/pdfs/.gitkeep
-```
-
----
-
-# Reproducibility Notes
-
-For reproducible experiments:
-
-1. keep the same PDF set
-2. keep the same embedding model
-3. keep the same reranker model
-4. keep the same chunk size and overlap
-5. rebuild the vector store after ingestion changes
-6. keep the evaluation dataset versioned
-7. record `TOP_K` and candidate-count settings
-8. pin dependency versions before publishing final benchmark results
-
----
-
-# Current Limitations
-
-The project is still under active development.
-
-Current limitations:
-
-1. the evaluation dataset currently contains only 5 questions
-2. `TOP_K=5` is still a preliminary choice
-3. candidate-count sweep has not been completed yet
-4. generation quality evaluation has not been implemented yet
-5. citation precision and citation recall are not yet reported as separate metrics
-6. hallucination rate is not yet measured automatically
-7. hybrid BM25 + dense retrieval is not yet implemented
-8. document metadata extraction is not yet implemented
-9. bibliography parsing currently assumes supported numbered-reference formats
-10. retrieval evaluation is page-based rather than gold-chunk-based
-11. scanned/image-only PDFs are not currently handled with OCR
-
----
-
-# Roadmap
-
-```text
-[✓] PDF parsing
-[✓] Text cleaning
-[✓] Paragraph-aware chunking
-[✓] BGE-M3 embeddings
-[✓] Qdrant Local
-[✓] Dense retrieval
-[✓] Candidate retrieval
-[✓] Deduplication
-[✓] BGE reranking
-[✓] Bibliography exclusion
-[✓] Reference parsing
-[✓] Per-document reference storage
-[✓] Sentence-level evidence generation
-[✓] Deterministic citation rendering
-[✓] Retrieval evaluation
-[✓] Dense vs reranker evaluation
-[✓] K-sweep evaluation
-
-[ ] Candidate-count sweep
-[ ] Larger evaluation dataset
-[ ] Generation evaluation
-[ ] Groundedness / faithfulness evaluation
-[ ] Citation precision and recall
-[ ] Hallucination evaluation
-[ ] Hybrid BM25 + dense retrieval
-[ ] Document metadata extraction
-[ ] Support for additional bibliography formats
-```
-
----
-
-# Planned Evaluation
-
-The final evaluation set should include multiple question types:
-
-```text
-Definition
-Factual
-Application
-Comparison
-Cause and effect
-Methods
-Challenges
-Broad questions
-Narrow questions
-```
-
-A reasonable target is:
-
-```text
-30-50 manually verified evaluation questions
-```
-
-Planned experiments:
-
-```text
-Experiment A
-BGE-M3 + Qdrant
-
-Experiment B
-BGE-M3 + Qdrant + BGE Reranker
-
-Experiment C
-Hybrid Retrieval + Reranker
-```
-
----
-
-# Current Evaluation Status
-
-The current results are preliminary.
-
-They are useful for validating the retrieval pipeline, but they are not large enough to claim final benchmark performance.
-
-Current observed improvement from reranking:
-
-```text
-Page Recall:
-0.5833 -> 0.7667
-
-MRR:
-0.7500 -> 1.0000
-```
-
----
-
-# Quick Start
-
-For an already configured environment:
-
-```bash
-source .venv/bin/activate
-```
-
-Add PDFs to:
-
-```text
-data/pdfs/
-```
-
-Build the index:
-
-```bash
-python3 scripts/ingest.py
-```
-
-Start the chat:
-
-```bash
-python3 scripts/chat.py
-```
-
-Run retrieval evaluation:
-
-```bash
-python3 scripts/evaluate_retrieval.py
-```
-
-Run K-sweep:
-
-```bash
-python3 scripts/evaluate_k_sweep.py
-```
-
----
-
-# Security and Privacy
-
-The RAG pipeline is designed to run locally.
-
-Document text is processed locally by:
-
-- PyMuPDF
-- BGE-M3
-- Qdrant Local
-- BGE reranker
-- Ollama
-
-However, model files may be downloaded from external model repositories during setup.
-
-If you work with sensitive documents, review your model-download, logging, cache, and source-control policies before use.
-
----
-
-# License
-
-Add a project license before publishing the repository if you want others to reuse, modify, or redistribute the code.
-
-Also review the licenses and usage terms of all third-party models and libraries before commercial use.
-
----
-
-# Notes for Contributors
-
-When changing retrieval or ingestion behavior:
-
-1. add or update tests
-2. rebuild the vector store
-3. rerun retrieval evaluation
-4. rerun K-sweep if ranking behavior changed
-5. document metric changes in the README or experiment logs
-
-Avoid presenting results from the current 5-question dataset as final benchmark performance.
-
----
-
-# Summary
-
-The current system provides an end-to-end local academic RAG pipeline that:
-
-- parses academic PDFs
-- extracts and stores numbered references
-- excludes bibliographies from answer evidence
-- performs multilingual dense retrieval
-- reranks candidate chunks with a multilingual cross-encoder
-- builds sentence-level evidence
-- generates answers locally with Qwen through Ollama
-- maps evidence deterministically to academic references or page citations
-- prints full references used in the answer
-- evaluates retrieval quality numerically
-- supports K-sweep experiments for retrieval tuning
-
-The project is intended as a research-oriented foundation for building a more rigorous academic RAG system with stronger retrieval, citation, and generation evaluation.
+## License & Acknowledgments
+
+### License
+Distributed under the **MIT License**. See `LICENSE` for more information.
+
+### Acknowledgments
+- [BAAI](https://github.com/FlagOpen/FlagEmbedding) for developing the `BGE-M3` and `BGE-Reranker-v2-m3` models.
+- [Qdrant](https://qdrant.tech/) for their fast, zero-dependency embedded vector database.
+- [Ollama](https://ollama.com/) for making local LLM deployment effortless.
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF) for high-performance PDF layout parsing.

@@ -123,6 +123,12 @@ data/pdfs/*.pdf
 !data/pdfs/.gitkeep
 
 
+
+# Avoid accidentally committing copyrighted/private PDFs
+data/excel/*.pdf
+
+# Keep the directory itself
+!data/excel/.gitkeep
 # ============================================================
 # Evaluation
 # ============================================================
@@ -162,3 +168,15 @@ huggingface/
 
 *.bak
 *.tmp
+
+
+# ============================================================
+# PROJECT CONTEXT
+# ============================================================
+
+PROJECT_CONTEXT.md
+
+
+docs/
+rebuild_mcp_index.sh
+fix_v2_reference_regression.sh

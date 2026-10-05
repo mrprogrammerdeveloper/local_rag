@@ -7,7 +7,8 @@ from local_rag.ingestion.models import (
 
 class DocumentSectionSplitter:
     REFERENCES_PATTERN = re.compile(
-        r"\bReferences\s*(?=\[\d+\])",
+        r"\bReferences\s*"
+        r"(?=(?:\[\d+\]|\d+[.)]))",
         re.IGNORECASE,
     )
 

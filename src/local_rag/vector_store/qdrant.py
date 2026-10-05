@@ -118,3 +118,32 @@ class QdrantVectorStore:
                 unique_value,
             )
         )
+    def get_all_payloads(
+        self,
+    ) -> list[dict]:
+
+        payloads: list[dict] = []
+
+        offset = None
+
+        while True:
+            points, next_offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            for point in points:
+                if point.payload:
+                    payloads.append(
+                        point.payload
+                    )
+
+            if next_offset is None:
+                break
+
+            offset = next_offset
+
+        return payloads

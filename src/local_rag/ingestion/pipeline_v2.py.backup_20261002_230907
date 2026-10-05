@@ -1,0 +1,102 @@
+from pathlib import Path
+
+from local_rag.ingestion.base import (
+    BaseIngestionPipeline,
+)
+
+from local_rag.ingestion.models import (
+    IngestionResult,
+)
+
+from local_rag.ingestion.layout_pdf_loader  import (
+    LayoutPDFLoader,
+)
+
+from local_rag.ingestion.reference_parser import (
+    ReferenceParser,
+)
+
+from local_rag.ingestion.section_splitter import (
+    DocumentSectionSplitter,
+)
+
+from local_rag.ingestion.structure_chunker import (
+    StructureAwareChunker,
+)
+
+
+class StructureAwareIngestionPipeline(
+    BaseIngestionPipeline
+):
+
+    name = "v2-basic"
+
+    description = (
+        "Hierarchical structure-aware "
+        "token-based chunking"
+    )
+
+    def __init__(
+        self,
+    ) -> None:
+
+        self.loader = LayoutPDFLoader()
+
+        self.reference_parser = (
+            ReferenceParser()
+        )
+
+        self.section_splitter = (
+            DocumentSectionSplitter()
+        )
+
+        self.chunker = (
+            StructureAwareChunker(
+                target_tokens=220,
+                min_tokens=100,
+                max_tokens=320,
+                overlap_sentences=1,
+                max_overlap_tokens=40,
+            )
+        )
+
+    def ingest(
+        self,
+        file_path: str | Path,
+    ) -> IngestionResult:
+
+        file_path = Path(
+            file_path
+        )
+
+        pages = self.loader.load(
+            file_path
+        )
+
+        references = (
+            self.reference_parser.parse(
+                pages
+            )
+        )
+
+        main_pages = (
+            self.section_splitter
+            .split_main_content(
+                pages
+            )
+        )
+
+        chunks = (
+            self.chunker.split(
+                main_pages
+            )
+        )
+
+        return IngestionResult(
+            source=file_path.name,
+            pages=pages,
+            main_pages=main_pages,
+            references=references,
+            chunks=chunks,
+            pipeline_name=self.name,
+        )

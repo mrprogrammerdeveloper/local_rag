@@ -30,6 +30,7 @@ class Retriever:
         self,
         query: str,
         top_k: int = TOP_K,
+        candidate_limit: int | None = None,
     ) -> list[RetrievedChunk]:
 
         query = query.strip()
@@ -43,9 +44,13 @@ class Retriever:
             )
         )
 
-        candidate_count = max(
-            top_k * 3,
-            top_k,
+        candidate_count = (
+            candidate_limit
+            if candidate_limit is not None
+            else max(
+                top_k * 3,
+                top_k,
+            )
         )
 
         results = (

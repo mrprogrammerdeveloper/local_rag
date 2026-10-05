@@ -12,8 +12,12 @@ from local_rag.generation.prompt_builder import (
     PromptBuilder,
 )
 
-from local_rag.llm.ollama_client import (
-    OllamaLLM,
+from local_rag.llm.selector import (
+    select_llm,
+)
+
+from local_rag.llm.usage import (
+    print_usage,
 )
 
 from local_rag.references.citation_normalizer import (
@@ -83,7 +87,9 @@ def print_references(
             f"ref {reference.number}]"
         )
 
-        print(content)
+        print(
+            content
+        )
 
         print()
 
@@ -105,7 +111,10 @@ def print_retrieved_sources(
             f"{chunk.score:.4f}"
         )
 
-        if chunk.rerank_score is not None:
+        if (
+            chunk.rerank_score
+            is not None
+        ):
             rerank_score = (
                 f"{chunk.rerank_score:.4f}"
             )
@@ -120,6 +129,22 @@ def print_retrieved_sources(
         )
 
 
+def close_llm(
+    llm,
+) -> None:
+
+    close_method = getattr(
+        llm,
+        "close",
+        None,
+    )
+
+    if callable(
+        close_method
+    ):
+        close_method()
+
+
 def main() -> None:
 
     print(
@@ -130,7 +155,9 @@ def main() -> None:
 
     vector_store = (
         QdrantVectorStore(
-            vector_size=embedder.dimension,
+            vector_size=(
+                embedder.dimension
+            ),
         )
     )
 
@@ -171,139 +198,246 @@ def main() -> None:
         PromptBuilder()
     )
 
-    llm = OllamaLLM()
+    # --------------------------------
+    # Select LLM provider / model
+    # --------------------------------
+
+    llm = select_llm()
 
     print(
-        "\nLocal RAG is ready."
+        "\nRAG is ready."
     )
 
     print(
         "Type 'exit' to quit.\n"
     )
 
-    while True:
+    try:
 
-        question = input(
-            "Question: "
-        ).strip()
+        while True:
 
-        if not question:
-            continue
+            question = input(
+                "Question: "
+            ).strip()
 
-        if question.lower() in {
-            "exit",
-            "quit",
-        }:
-            break
+            if not question:
+                continue
 
-        print(
-            "\nSearching documents..."
-        )
-
-        candidates = (
-            retriever.retrieve(
-                query=question,
-                top_k=RETRIEVAL_CANDIDATES,
-            )
-        )
-
-        if not candidates:
+            if question.lower() in {
+                "exit",
+                "quit",
+            }:
+                break
 
             print(
-                "\nNo relevant context found.\n"
+                "\nSearching documents..."
             )
 
-            continue
+            # --------------------------------
+            # Dense Retrieval
+            # --------------------------------
 
-        print(
-            f"Retrieved "
-            f"{len(candidates)} candidates."
-        )
+            candidates = (
+                retriever.retrieve(
+                    query=question,
+                    top_k=(
+                        RETRIEVAL_CANDIDATES
+                    ),
+                )
+            )
 
-        print(
-            "Reranking candidates..."
-        )
+            if not candidates:
 
-        chunks = reranker.rerank(
-            query=question,
-            chunks=candidates,
-            top_k=TOP_K,
-        )
+                print(
+                    "\nNo relevant context "
+                    "found.\n"
+                )
 
-        if not chunks:
+                continue
 
             print(
-                "\nNo relevant chunks "
-                "after reranking.\n"
+                f"Retrieved "
+                f"{len(candidates)} "
+                f"candidates."
             )
 
-            continue
+            # --------------------------------
+            # Reranking
+            # --------------------------------
 
-        evidence = (
-            evidence_builder.build(
+            print(
+                "Reranking candidates..."
+            )
+
+            chunks = (
+                reranker.rerank(
+                    query=question,
+                    chunks=candidates,
+                    top_k=TOP_K,
+                )
+            )
+
+            if not chunks:
+
+                print(
+                    "\nNo relevant chunks "
+                    "after reranking.\n"
+                )
+
+                continue
+
+            # --------------------------------
+            # Evidence
+            # --------------------------------
+
+            evidence = (
+                evidence_builder.build(
+                    chunks
+                )
+            )
+
+            if not evidence:
+
+                print(
+                    "\nNo usable evidence "
+                    "found.\n"
+                )
+
+                continue
+
+            # --------------------------------
+            # Prompt
+            # --------------------------------
+
+            user_prompt = (
+                prompt_builder
+                .build_user_prompt(
+                    question=question,
+                    evidence=evidence,
+                )
+            )
+
+            print(
+                "Generating answer..."
+            )
+
+            # --------------------------------
+            # LLM Generation
+            # --------------------------------
+
+            try:
+
+                llm_response = (
+                    llm.generate(
+                        system_prompt=(
+                            PromptBuilder
+                            .SYSTEM_PROMPT
+                        ),
+                        user_prompt=(
+                            user_prompt
+                        ),
+                    )
+                )
+
+            except Exception as exc:
+
+                print()
+                print(
+                    "LLM generation failed:"
+                )
+
+                print(
+                    str(exc)
+                )
+
+                print(
+                    "\n"
+                    + "=" * 70
+                    + "\n"
+                )
+
+                continue
+
+            raw_answer = (
+                llm_response.text
+            )
+
+            if not raw_answer:
+
+                print(
+                    "\nLLM returned an "
+                    "empty answer.\n"
+                )
+
+                continue
+
+            # --------------------------------
+            # Citation Rendering
+            # --------------------------------
+
+            answer = (
+                citation_renderer.render(
+                    answer=raw_answer,
+                    evidence=evidence,
+                )
+            )
+
+            # --------------------------------
+            # Final Answer
+            # --------------------------------
+
+            print(
+                "\nAnswer:\n"
+            )
+
+            print(
+                answer
+            )
+
+            # --------------------------------
+            # Academic References
+            # --------------------------------
+
+            print_references(
+                answer=answer,
+                citation_extractor=(
+                    citation_extractor
+                ),
+                reference_store=(
+                    reference_store
+                ),
+            )
+
+            # --------------------------------
+            # Retrieved Context Debug Info
+            # --------------------------------
+
+            print_retrieved_sources(
                 chunks
             )
-        )
 
-        if not evidence:
+            # --------------------------------
+            # LLM Token Usage
+            # --------------------------------
+
+            print_usage(
+                llm_response
+            )
 
             print(
-                "\nNo usable evidence found.\n"
+                "\n"
+                + "=" * 70
+                + "\n"
             )
 
-            continue
+    finally:
 
-        user_prompt = (
-            prompt_builder.build_user_prompt(
-                question=question,
-                evidence=evidence,
-            )
+        close_llm(
+            llm
         )
 
         print(
-            "Generating answer..."
-        )
-
-        raw_answer = (
-            llm.generate(
-                system_prompt=(
-                    PromptBuilder.SYSTEM_PROMPT
-                ),
-                user_prompt=user_prompt,
-            )
-        )
-
-        answer = (
-            citation_renderer.render(
-                answer=raw_answer,
-                evidence=evidence,
-            )
-        )
-
-        print(
-            "\nAnswer:\n"
-        )
-
-        print(answer)
-
-        print_references(
-            answer=answer,
-            citation_extractor=(
-                citation_extractor
-            ),
-            reference_store=(
-                reference_store
-            ),
-        )
-
-        print_retrieved_sources(
-            chunks
-        )
-
-        print(
-            "\n"
-            + "=" * 70
-            + "\n"
+            "\nLLM client closed."
         )
 
 

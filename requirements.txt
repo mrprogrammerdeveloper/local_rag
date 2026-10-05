@@ -19,4 +19,7 @@ numpy==2.3.3
 # Data Validation / Models
 pydantic==2.11.9
 
+rank-bm25 ==2.3.3
 
+
+google-genai==2.24

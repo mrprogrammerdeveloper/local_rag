@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 import torch
+
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -19,12 +20,14 @@ from local_rag.retrieval.retriever import (
 
 
 class Reranker:
+
     def __init__(
         self,
         model_name: str = RERANKER_MODEL,
         device: str = RERANKER_DEVICE,
         batch_size: int = RERANKER_BATCH_SIZE,
-    ):
+    ) -> None:
+
         self.device = torch.device(
             device
         )
@@ -56,46 +59,41 @@ class Reranker:
 
         self.model.eval()
 
-    def rerank(
+    def score_pairs(
         self,
-        query: str,
-        chunks: list[RetrievedChunk],
-        top_k: int = TOP_K,
-    ) -> list[RetrievedChunk]:
+        pairs: list[
+            tuple[str, str]
+        ],
+    ) -> list[float]:
 
-        if not chunks:
+        if not pairs:
             return []
 
-        query = query.strip()
-
-        if not query:
-            return chunks[:top_k]
-
-        scored_chunks: list[
-            RetrievedChunk
-        ] = []
+        scores: list[float] = []
 
         for start in range(
             0,
-            len(chunks),
+            len(pairs),
             self.batch_size,
         ):
-            batch = chunks[
+
+            batch = pairs[
                 start:
                 start + self.batch_size
             ]
 
-            pairs = [
+            model_pairs = [
                 [
-                    query,
-                    chunk.content,
+                    first,
+                    second,
                 ]
-                for chunk in batch
+                for first, second
+                in batch
             ]
 
             inputs = (
                 self.tokenizer(
-                    pairs,
+                    model_pairs,
                     padding=True,
                     truncation=True,
                     max_length=512,
@@ -112,12 +110,13 @@ class Reranker:
             }
 
             with torch.no_grad():
+
                 outputs = self.model(
                     **inputs,
                     return_dict=True,
                 )
 
-                scores = (
+                batch_scores = (
                     outputs.logits
                     .view(-1)
                     .float()
@@ -125,18 +124,76 @@ class Reranker:
                     .tolist()
                 )
 
-            for chunk, score in zip(
-                batch,
-                scores,
-            ):
-                scored_chunks.append(
-                    replace(
-                        chunk,
-                        rerank_score=float(
-                            score
-                        ),
-                    )
+            scores.extend(
+                float(score)
+                for score
+                in batch_scores
+            )
+
+        return scores
+
+    def score_pair(
+        self,
+        first: str,
+        second: str,
+    ) -> float:
+
+        scores = self.score_pairs(
+            [
+                (
+                    first,
+                    second,
                 )
+            ]
+        )
+
+        if not scores:
+            return float("-inf")
+
+        return scores[0]
+
+    def rerank(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        top_k: int = TOP_K,
+    ) -> list[RetrievedChunk]:
+
+        if not chunks:
+            return []
+
+        query = query.strip()
+
+        if not query:
+            return chunks[:top_k]
+
+        pairs = [
+            (
+                query,
+                chunk.content,
+            )
+            for chunk in chunks
+        ]
+
+        scores = self.score_pairs(
+            pairs
+        )
+
+        scored_chunks: list[
+            RetrievedChunk
+        ] = []
+
+        for chunk, score in zip(
+            chunks,
+            scores,
+        ):
+
+            scored_chunks.append(
+                replace(
+                    chunk,
+                    rerank_score=score,
+                )
+            )
 
         scored_chunks.sort(
             key=lambda chunk: (
@@ -148,4 +205,6 @@ class Reranker:
             reverse=True,
         )
 
-        return scored_chunks[:top_k]
+        return scored_chunks[
+            :top_k
+        ]
